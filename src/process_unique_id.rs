@@ -5,9 +5,11 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
+
 use std::cell::UnsafeCell;
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT, Ordering};
+use core::nonzero::NonZero;
 use std::{u64, usize};
 use std::default::Default;
 
@@ -16,10 +18,11 @@ static GLOBAL_COUNTER: AtomicUsize = ATOMIC_USIZE_INIT;
 fn next_global() -> usize {
     let mut prev = GLOBAL_COUNTER.load(Ordering::Relaxed);
     loop {
-        assert!(prev < usize::MAX, "Snow Crash: Go home and reevaluate your threading model!");
-        let old_value = GLOBAL_COUNTER.compare_and_swap(prev, prev + 1, Ordering::Relaxed);
+        debug_assert!(prev < usize::MAX, "Snow Crash: Go home and reevaluate your threading model!");
+        let next = prev + 1;
+        let old_value = GLOBAL_COUNTER.compare_and_swap(prev, next, Ordering::Relaxed);
         if old_value == prev {
-            return prev;
+            return next;
         } else {
             prev = old_value;
         }
@@ -29,7 +32,7 @@ fn next_global() -> usize {
 // NOTE: We could use a Cell (not unsafe) but this is slightly faster.
 thread_local! {
     static NEXT_LOCAL_UNIQUE_ID: UnsafeCell<ProcessUniqueId> = UnsafeCell::new(ProcessUniqueId {
-        prefix: next_global(),
+        prefix: unsafe { NonZero::new(next_global()) },
         offset: 0
     })
 }
@@ -52,7 +55,7 @@ thread_local! {
 /// TL; DR: Don't create unique IDs from over 4 billion different threads on a 32bit system.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ProcessUniqueId {
-    prefix: usize,
+    prefix: NonZero<usize>,
     offset: u64,
 }
 
@@ -69,7 +72,7 @@ impl ProcessUniqueId {
                 let next_unique_id = *unique_id.get();
                 (*unique_id.get()) = if next_unique_id.offset == u64::MAX {
                     ProcessUniqueId {
-                        prefix: next_global(),
+                        prefix: NonZero::new(next_global()),
                         offset: 0,
                     }
                 } else {

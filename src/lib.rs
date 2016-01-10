@@ -7,10 +7,13 @@
 // except according to those terms.
 
 #![cfg_attr(test, feature(test))]
+#![feature(nonzero)]
 //! A crate for quickly generating unique IDs with guaranteed properties.
 //!
 //! This crate currently includes guaranteed process unique IDs but may include new ID types in the
 //! future.
+extern crate core;
 mod process_unique_id;
+
 
 pub use process_unique_id::ProcessUniqueId;
